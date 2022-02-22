@@ -17,6 +17,8 @@ im_in_val = 0
 sg.theme("DarkBlue")
 sg.set_options(font=("Courier New", 16))
 
+#----------------------------------Check Functions------------------------------------------
+
 def Check_Folders_Selected():
     global input_folder
     global output_folder
@@ -38,6 +40,8 @@ def Check_Box_Selected():
     else:
         return True
 
+#----------------------------------Menu Functions---------------------------------------
+
 def Get_Dataset_Folders():
     global train_input_dir
     global val_input_dir
@@ -52,8 +56,7 @@ def Get_Dataset_Folders():
             val_input_dir = input_folder + "/" + file
             flag = 1
         elif(flag == 0):
-            if (values['increase_set'] == 1):
-                
+            if (values['increase_set'] == True):
                 return False
             else:
                 sg.Popup('WARNING: No Train/Val folders in input', keep_on_top=True, location=(960, 540))
@@ -65,7 +68,7 @@ def Get_Dataset_Folders():
     return True
 
 def Reduce_Set_Menu():
-    
+    Clear_Menu()
     Get_Dataset_Folders()
      
     window['im_in_dir'].update('Images in Train Folder: ' + str(im_in_train) + ', Val Folder: '+ str(im_in_val))
@@ -109,12 +112,19 @@ def FP_Extraction_Menu():
     window['im_in_dir'].update(visible=True)
 
 def Create_Set_Menu():
+    global Images_In_Dir
     Clear_Menu()
     Images_In_Dir = len(os.listdir(input_folder))
     window['im_in_dir'].update('Images in Input Folder: ' + str(Images_In_Dir))
     window['im_in_dir'].update(visible=True)
+    
+    window['im_in_out_dir'].update('Projected Images in Output Train Folder: ' + str(int(Images_In_Dir*values['slider'])) + ', Val Folder: '+ str(int(Images_In_Dir*(1-values['slider']))))
+    window['im_in_out_dir'].update(visible=True)
+    window['slider'].update(visible=True)
 
 def Clear_Menu():
+    window['slider'].update(visible=False)
+
     window['im_in_dir'].update(visible=False)
     window['im_in_out_dir'].update(visible=False)
     window['random_reduce'].update(visible=False)
@@ -123,6 +133,8 @@ def Clear_Menu():
     window['folder_multiplier_text'].update(visible=False)
     window['folder_multiplier'].update(visible=False)
     window['progress_bar'].update(0)
+
+#--------------------------Process Functions-----------------------------------
 
 def FP_Extraction(input_folder, output_folder):
     window['progress_bar'].update(0)
@@ -260,6 +272,11 @@ def Increase_Set():
     window['progress_bar'].update(0)
     #window['progress_bar'].update(visible=False)
     
+def Create_Set():
+    pass
+
+#------------------------------------------------Layout----------------------------------
+
 left_col_layout = [
     [sg.Text('Input Folder:'), sg.In(size=(25,1), enable_events=True, key='-INFOLDER-'), sg.FolderBrowse()],
     [sg.Checkbox(' - Bounding Box Extraction', default=False, enable_events=True, key="fp_extraction")],
@@ -271,8 +288,9 @@ left_col_layout = [
 right_col_layout = [
     [sg.Text('Output Folder:'), sg.In(size=(25,1), enable_events=True ,key='-OUTFOLDER-'), sg.FolderBrowse()],
     [sg.Text('Create New Folder in Output Folder:'),sg.InputText(size=(15,1), key="new_folder_text"),sg.Button('Submit',key="submit_button", enable_events=True)],
-    [sg.Text('Images in Folder', visible=True, key="im_in_dir")],
+    [sg.Text('Images in Folder', visible=True, key="im_in_dir")], 
     [sg.Text('Images in Folder', visible=True, key="im_in_out_dir")],
+    [sg.Slider(range=(0,1),default_value=0.5,size=(30,10),orientation='horizontal',visible=True, key='slider', font=("Courier New", 10), enable_events=True, resolution=.1)],
     [sg.Text('Dataset Multiplier:', key='folder_multiplier_text', visible=True)], 
     [sg.Input(str(dataset_multiplier), size=(10,1), key='folder_multiplier', visible=True)],
     [sg.Checkbox(' - Random', default=False, enable_events=True, visible=True, pad=(86, 0), key="random_reduce")],
@@ -287,19 +305,20 @@ layout =[
     sg.Column(right_col_layout, element_justification='right', expand_x=True, vertical_alignment='t')]
 ]
 
-window = sg.Window('Dataset Manipulation Tool', layout,resizable=True, finalize=True,size=(1100, 330), location=(500, 400))
+window = sg.Window('Dataset Manipulation Tool', layout,resizable=True, finalize=True,size=(1100, 360), location=(500, 400))
 window['folder_multiplier'].bind("<Return>", "_Enter")  
 
 input_folder = None
 output_folder = None
 
+
+#--------------------------------------------------Event Handling--------------------------
 Clear_Menu()
      
 while True:
     event, values = window.read()
     if event in (sg.WIN_CLOSED, 'Exit'):
         break
-
     if event == '-INFOLDER-':
         im_in_train = 0
         im_in_val = 0
@@ -307,7 +326,6 @@ while True:
         Images_In_Dir = len(os.listdir(input_folder))
     if event == '-OUTFOLDER-':
         output_folder = values['-OUTFOLDER-'] 
-        
     if event == 'fp_extraction':
         if(values['fp_extraction'] == 0):
             Clear_Menu()
@@ -318,7 +336,6 @@ while True:
         if(Check_Folders_Selected() == False):
             continue
         FP_Extraction_Menu()
-
     if event == 'reduce_set':
         if(values['reduce_set'] == 0):
             Clear_Menu()
@@ -329,7 +346,6 @@ while True:
         if(Check_Folders_Selected() == False):
             continue
         Reduce_Set_Menu()
-
     if event == 'increase_set':
         if(values['increase_set'] == 0):
             Clear_Menu()
@@ -377,6 +393,8 @@ while True:
                         continue
                     else:
                         Reduce_Set()
+                elif(values['create_set'] == 1):
+                    Create_Set()
          
     if event == 'folder_multiplier' + '_Enter':
         dataset_multiplier = float(values['folder_multiplier'])
@@ -392,4 +410,7 @@ while True:
         newDirectory = output_folder + "/" + values['new_folder_text']
         os.mkdir(newDirectory)
         output_folder = newDirectory
+
+    if event == 'slider':
+        Create_Set_Menu()
         
