@@ -1,21 +1,259 @@
 #!/usr/bin/python 
+from tkinter import Image
 import PySimpleGUI as sg
 import os
 import cv2
 import glob 
 import shutil
+from enum import Enum
+
+window = None
+values = None
+
+slider_ratio = 0.5
 
 Images_In_Dir = 0
 train_input_dir = None
 val_input_dir = None
+
+Execute = False
+
+datasetFormat = False
+
+MainMenu = Enum('MainMenu', 'extraction reduce increase create nothing')
+SideMenu = Enum('SideMenu', 'random smallest largest nothing')
+
+MainMenuState = MainMenu.nothing
+SideMenuState = SideMenu.nothing
 
 dataset_multiplier = 1
 
 im_in_train = 0
 im_in_val = 0
 
+input_folder = None
+output_folder = None
+
 sg.theme("DarkBlue")
 sg.set_options(font=("Courier New", 16))
+
+#-----------------------State Handlers-------------------------------
+def Main_Menu_State():
+    global MainMenuState
+    if MainMenuState == MainMenu.extraction:
+        print("Extract Bounding Boxes Selection")
+        window['reduce_set'].update(False)
+        window['increase_set'].update(False)
+        window['create_set'].update(False)
+        FP_Extraction_Menu()
+    elif MainMenuState == MainMenu.reduce:
+        print("Reduce Set Selection")
+        window['fp_extraction'].update(False)
+        window['increase_set'].update(False)
+        window['create_set'].update(False)
+        Reduce_Set_Menu()
+    elif MainMenuState == MainMenu.increase:
+        print("Increase Set Selection")
+        window['reduce_set'].update(False)
+        window['fp_extraction'].update(False)
+        window['create_set'].update(False)
+        Increase_Set_Menu()
+    elif MainMenuState == MainMenu.create:
+        print("Create Set Selection")
+        window['reduce_set'].update(False)
+        window['fp_extraction'].update(False)
+        window['increase_set'].update(False)
+        Create_Set_Menu()
+    else:
+        print("No Selection...")
+
+def Side_Menu_State():
+    global SideMenuState
+    if SideMenuState == SideMenu.random:
+        window['smallest_reduce'].update(False)
+        window['largest_reduce'].update(False)
+    elif SideMenuState == SideMenu.largest:
+        window['smallest_reduce'].update(False)
+        window['random_reduce'].update(False)
+    elif SideMenuState == SideMenu.smallest:
+        window['random_reduce'].update(False)
+        window['largest_reduce'].update(False)
+    else:
+        pass
+
+
+def Directory_Stats_Selection():
+    global datasetFormat, im_in_train, im_in_val, Images_In_Dir, dataset_multiplier, slider_ratio
+    if(datasetFormat == True):
+        print("Dataset Format")
+        window['im_in_dir'].update('Images in Train Folder: ' + str(int(im_in_train)) + ', Val Folder: '+ str(im_in_val))
+        window['im_in_dir'].update(visible=True)
+        trainVal = float(im_in_train)*float(dataset_multiplier)
+        valVal = float(im_in_val)*float(dataset_multiplier)
+        window['im_in_out_dir'].update('Projected Images in Output Train Folder: ' + str(int(trainVal)) + ', Val Folder: '+ str(int(valVal)))
+        window['im_in_out_dir'].update(visible=True)
+    elif(datasetFormat == False) and MainMenuState != MainMenu.create:
+        print("Image Folder Format")
+        window['im_in_dir'].update('Images in Input Folder: ' + str(Images_In_Dir))
+        window['im_in_dir'].update(visible=True)
+        window['im_in_out_dir'].update('Projected Images in Output Folder: ' + str(int(Images_In_Dir*dataset_multiplier)))
+        window['im_in_out_dir'].update(visible=True)
+    elif(datasetFormat == False) and MainMenuState == MainMenu.create:
+        window['im_in_dir'].update('Images in Input Folder: ' + str(Images_In_Dir))
+        window['im_in_dir'].update(visible=True)
+        trainVal = float(Images_In_Dir)*float(slider_ratio)
+        valVal = float(Images_In_Dir)*float(1 - slider_ratio)
+        window['im_in_out_dir'].update('Projected Images in Output Train Folder: ' + str(int(trainVal)) + ', Val Folder: '+ str(int(valVal)))
+        window['im_in_out_dir'].update(visible=True)
+
+#-----------------------Event Handlers-------------------------------
+def Event_Handler():
+    global MainMenuState, SideMenuState, output_folder, input_folder
+    global values, datasetFormat, Images_In_Dir, im_in_train, im_in_val
+    global dataset_multiplier, slider_ratio, Execute
+
+    event, values = window.read()
+    if event in (sg.WIN_CLOSED, 'Exit'):
+        return False
+    if event == '-INFOLDER-':
+        im_in_train = 0
+        im_in_val = 0
+        input_folder = values['-INFOLDER-']
+        if(Get_Dataset_Folders() == False):
+            datasetFormat = False
+        else:
+            datasetFormat = True
+        Images_In_Dir = len(os.listdir(input_folder))
+        return True
+    if event == '-OUTFOLDER-':
+        output_folder = values['-OUTFOLDER-'] 
+        return True
+    if event == 'fp_extraction':
+        dataset_multiplier = 1
+        
+        if(values['fp_extraction'] == 0):
+            Clear_Menu()
+            MainMenuState = MainMenu.nothing
+        elif(Check_Folders_Selected() == False):
+            print("No Folders")
+            return True
+        else:
+            MainMenuState = MainMenu.extraction
+            return True
+    if event == 'reduce_set':
+        dataset_multiplier = 1
+        
+        if(values['reduce_set'] == 0):
+            Clear_Menu()
+            MainMenuState = MainMenu.nothing
+        elif(Check_Folders_Selected() == False):
+            return True
+        else:
+            MainMenuState = MainMenu.reduce
+            return True
+    if event == 'increase_set':
+        dataset_multiplier = 1
+        if(values['increase_set'] == 0):
+            Clear_Menu()
+            MainMenuState = MainMenu.nothing
+        elif(Check_Folders_Selected() == False):
+            return True
+        else:
+            MainMenuState = MainMenu.increase
+            return True
+    if event == 'create_set':
+        dataset_multiplier = 1
+        if(values['create_set'] == 0):
+            Clear_Menu()
+            MainMenuState = MainMenu.nothing
+        elif(Check_Folders_Selected() == False):
+            return True
+        else:
+            MainMenuState = MainMenu.create
+            return True
+    if event == 'random_reduce':
+        SideMenuState = SideMenu.random
+
+    if event == 'smallest_reduce':
+        SideMenuState = SideMenu.smallest
+
+    if event == 'largest_reduce':
+        SideMenuState = SideMenu.largest
+
+    if event == 'execute':
+        if(Check_Folders_Selected() == True) and (Check_Box_Selected() == True):
+            if(MainMenuState == MainMenu.reduce):
+                if(Sub_Check_Box_Selected() == True):
+                    Execute = True
+            else:
+                Execute = True
+         
+    if event == 'folder_multiplier' + '_Enter':
+        dataset_multiplier = float(values['folder_multiplier'])
+
+    if event == 'submit_button':
+        newDirectory = output_folder + "/" + values['new_folder_text']
+        os.mkdir(newDirectory)
+        output_folder = newDirectory
+
+    if event == 'slider':
+        slider_ratio = values['slider']
+
+def Processes():
+    global Execute
+    if Execute == True:
+        print("Execute = True")
+        print("Running Selection")
+        global MainMenuState
+        if MainMenuState == MainMenu.extraction:
+            FP_Extraction(input_folder, output_folder)
+        elif MainMenuState == MainMenu.reduce:
+            print("Reduce")
+            Reduce_Set()
+        elif MainMenuState == MainMenu.increase:
+            Increase_Set()
+        elif MainMenuState == MainMenu.create:
+            Create_Set()
+        else:
+            print("No Selection...")
+        Execute = False
+    else:
+        pass
+
+#-----------------------Layout-------------------------------
+def Layout_Setup():
+    global window
+    left_col_layout = [
+    [sg.Text('Input Folder:'), sg.In(size=(25,1), enable_events=True, key='-INFOLDER-'), sg.FolderBrowse()],
+    [sg.Checkbox(' - Bounding Box Extraction', default=False, enable_events=True, key="fp_extraction")],
+    [sg.Checkbox(' - Reduce Set Size', default=False, enable_events=True, key="reduce_set")],
+    [sg.Checkbox(' - Increase Set Size', default=False, enable_events=True, key="increase_set")],
+    [sg.Checkbox(' - Create train/val Dataset from Images', default=False, enable_events=True, key="create_set")]
+    
+    ]
+    right_col_layout = [
+        [sg.Text('Output Folder:'), sg.In(size=(25,1), enable_events=True ,key='-OUTFOLDER-'), sg.FolderBrowse()],
+        [sg.Text('Create New Folder in Output Folder:'),sg.InputText(size=(15,1), key="new_folder_text"),sg.Button('Submit',key="submit_button", enable_events=True)],
+        [sg.Text('Images in Folder', visible=True, key="im_in_dir")], 
+        [sg.Text('Images in Folder', visible=True, key="im_in_out_dir")],
+        [sg.Slider(range=(0,1),default_value=0.5,size=(30,10),orientation='horizontal',visible=True, key='slider', font=("Courier New", 10), enable_events=True, resolution=.1)],
+        [sg.Text('Dataset Multiplier:', key='folder_multiplier_text', visible=True)], 
+        [sg.Input(str(dataset_multiplier), size=(10,1), key='folder_multiplier', visible=True)],
+        [sg.Checkbox(' - Random', default=False, enable_events=True, visible=True, pad=(86, 0), key="random_reduce")],
+        [sg.Checkbox(' - Remove Smallest', default=False, enable_events=True, visible=True, key="smallest_reduce")],
+        [sg.Checkbox(' - Remove Largest', default=False, enable_events=True, visible=True, pad=(14, 0), key="largest_reduce")],
+        [sg.Button('Execute', enable_events=True, key="execute")],
+        [sg.ProgressBar(max_value = 1000, orientation='horizontal', size=(65, 10), key="progress_bar", visible = True)]
+    ]
+
+    layout =[
+        [sg.Column(left_col_layout, element_justification='left', expand_x=True, vertical_alignment='t'),
+        sg.Column(right_col_layout, element_justification='right', expand_x=True, vertical_alignment='t')]
+    ]
+
+    window = sg.Window('Dataset Manipulation Tool', layout,resizable=True, finalize=True,size=(1100, 360), location=(500, 400))
+    window['folder_multiplier'].bind("<Return>", "_Enter")  
+
 
 #----------------------------------Check Functions------------------------------------------
 
@@ -40,6 +278,13 @@ def Check_Box_Selected():
     else:
         return True
 
+def Sub_Check_Box_Selected():
+    if(values['random_reduce'] + values['smallest_reduce'] + values['largest_reduce']== 0):
+        sg.Popup('Please Select Reduce Option', keep_on_top=True, location=(960, 540))
+        return False
+    else:
+        return True
+
 #----------------------------------Menu Functions---------------------------------------
 
 def Get_Dataset_Folders():
@@ -55,32 +300,21 @@ def Get_Dataset_Folders():
         elif(file == "val"):
             val_input_dir = input_folder + "/" + file
             flag = 1
-        elif(flag == 0):
-            if (values['increase_set'] == True):
-                return False
-            else:
-                sg.Popup('WARNING: No Train/Val folders in input', keep_on_top=True, location=(960, 540))
-                return False
 
-
+    if(flag == 0):
+        sg.Popup('WARNING: No Train/Val folders in input', keep_on_top=True, location=(960, 540))
+        return False
     im_in_train = len(os.listdir(train_input_dir + "/Battery")) + len(os.listdir(train_input_dir + "/FP"))
     im_in_val = len(os.listdir(val_input_dir + "/Battery")) + len(os.listdir(val_input_dir + "/FP"))
     return True
 
 def Reduce_Set_Menu():
     Clear_Menu()
-    Get_Dataset_Folders()
-     
-    window['im_in_dir'].update('Images in Train Folder: ' + str(im_in_train) + ', Val Folder: '+ str(im_in_val))
-    window['im_in_dir'].update(visible=True)
+    Directory_Stats_Selection()
 
-    trainVal = float(im_in_train)*float(dataset_multiplier)
-    valVal = float(im_in_val)*float(dataset_multiplier)
-
-    window['im_in_out_dir'].update('Projected Images in Output Train Folder: ' + str(int(trainVal)) + ', Val Folder: '+ str(int(valVal)))
-    window['im_in_out_dir'].update(visible=True)
     window['folder_multiplier_text'].update("Dataset Multiplier (< 1):")
     window['folder_multiplier_text'].update(visible=True)
+    window['folder_multiplier'].update(dataset_multiplier)
     window['folder_multiplier'].update(visible=True)
     window['random_reduce'].update(visible=True)
     window['smallest_reduce'].update(visible=True)
@@ -88,43 +322,31 @@ def Reduce_Set_Menu():
 
 def Increase_Set_Menu():
     Clear_Menu()
-    if(Get_Dataset_Folders() == False):
-        window['im_in_dir'].update('Images in Input Folder: ' + str(Images_In_Dir))
-        window['im_in_dir'].update(visible=True)
-        window['im_in_out_dir'].update('Projected Images in Output Train Folder: ' + str(int(Images_In_Dir)))
-        window['im_in_out_dir'].update(visible=True)
-    else:
-        window['im_in_dir'].update('Images in Train Folder: ' + str(int(im_in_train)) + ', Val Folder: '+ str(im_in_val))
-        window['im_in_dir'].update(visible=True)
-        trainVal = float(im_in_train)*float(dataset_multiplier)
-        valVal = float(im_in_val)*float(dataset_multiplier)
-        window['im_in_out_dir'].update('Projected Images in Output Train Folder: ' + str(int(trainVal)) + ', Val Folder: '+ str(int(valVal)))
-        window['im_in_out_dir'].update(visible=True)
+    Directory_Stats_Selection()
 
     window['folder_multiplier_text'].update("Dataset Multiplier (x2, x3, x4):")
     window['folder_multiplier_text'].update(visible=True)
+    window['folder_multiplier'].update(round(dataset_multiplier,0))
     window['folder_multiplier'].update(visible=True)
 
 def FP_Extraction_Menu():
-    global Images_In_Dir
     Clear_Menu()
-    window['im_in_dir'].update('Images in Input Folder: ' + str(Images_In_Dir))
-    window['im_in_dir'].update(visible=True)
+    Directory_Stats_Selection()
+    window['im_in_out_dir'].update(visible=False)
+    if(datasetFormat == True):
+        sg.Popup('WARNING: Image Folder is in Dataset Format', keep_on_top=True, location=(960, 540))
 
 def Create_Set_Menu():
-    global Images_In_Dir
     Clear_Menu()
-    Images_In_Dir = len(os.listdir(input_folder))
-    window['im_in_dir'].update('Images in Input Folder: ' + str(Images_In_Dir))
-    window['im_in_dir'].update(visible=True)
-    
-    window['im_in_out_dir'].update('Projected Images in Output Train Folder: ' + str(int(Images_In_Dir*values['slider'])) + ', Val Folder: '+ str(int(Images_In_Dir*(1-values['slider']))))
-    window['im_in_out_dir'].update(visible=True)
+    Directory_Stats_Selection()
     window['slider'].update(visible=True)
+    if(datasetFormat == True):
+        sg.Popup('WARNING: Image Folder is in Dataset Format', keep_on_top=True, location=(960, 540))
 
 def Clear_Menu():
+    global dataset_multiplier
+    global window
     window['slider'].update(visible=False)
-
     window['im_in_dir'].update(visible=False)
     window['im_in_out_dir'].update(visible=False)
     window['random_reduce'].update(visible=False)
@@ -133,6 +355,7 @@ def Clear_Menu():
     window['folder_multiplier_text'].update(visible=False)
     window['folder_multiplier'].update(visible=False)
     window['progress_bar'].update(0)
+    #window['folder_multiplier'].update(str(round(dataset_multiplier, 1)))
 
 #--------------------------Process Functions-----------------------------------
 
@@ -275,142 +498,21 @@ def Increase_Set():
 def Create_Set():
     pass
 
-#------------------------------------------------Layout----------------------------------
+#-----------------------Main-------------------------------
 
-left_col_layout = [
-    [sg.Text('Input Folder:'), sg.In(size=(25,1), enable_events=True, key='-INFOLDER-'), sg.FolderBrowse()],
-    [sg.Checkbox(' - Bounding Box Extraction', default=False, enable_events=True, key="fp_extraction")],
-    [sg.Checkbox(' - Reduce Set Size', default=False, enable_events=True, key="reduce_set")],
-    [sg.Checkbox(' - Increase Set Size', default=False, enable_events=True, key="increase_set")],
-    [sg.Checkbox(' - Create train/val Dataset from Images', default=False, enable_events=True, key="create_set")]
-    
-]
-right_col_layout = [
-    [sg.Text('Output Folder:'), sg.In(size=(25,1), enable_events=True ,key='-OUTFOLDER-'), sg.FolderBrowse()],
-    [sg.Text('Create New Folder in Output Folder:'),sg.InputText(size=(15,1), key="new_folder_text"),sg.Button('Submit',key="submit_button", enable_events=True)],
-    [sg.Text('Images in Folder', visible=True, key="im_in_dir")], 
-    [sg.Text('Images in Folder', visible=True, key="im_in_out_dir")],
-    [sg.Slider(range=(0,1),default_value=0.5,size=(30,10),orientation='horizontal',visible=True, key='slider', font=("Courier New", 10), enable_events=True, resolution=.1)],
-    [sg.Text('Dataset Multiplier:', key='folder_multiplier_text', visible=True)], 
-    [sg.Input(str(dataset_multiplier), size=(10,1), key='folder_multiplier', visible=True)],
-    [sg.Checkbox(' - Random', default=False, enable_events=True, visible=True, pad=(86, 0), key="random_reduce")],
-    [sg.Checkbox(' - Remove Smallest', default=False, enable_events=True, visible=True, key="smallest_reduce")],
-    [sg.Checkbox(' - Remove Largest', default=False, enable_events=True, visible=True, pad=(14, 0), key="largest_reduce")],
-    [sg.Button('Execute', enable_events=True, key="execute")],
-    [sg.ProgressBar(max_value = 1000, orientation='horizontal', size=(65, 10), key="progress_bar", visible = True)]
-]
+def main():
+    print("Dataset Manipulation Tool Startup...")
+    print("Defining Layout...")
+    Layout_Setup()
+    Clear_Menu()
+    print("Running...")
+    while(True):
+        if(Event_Handler() == False):
+            break
+        Main_Menu_State()
+        Side_Menu_State()
+        Processes()
 
-layout =[
-    [sg.Column(left_col_layout, element_justification='left', expand_x=True, vertical_alignment='t'),
-    sg.Column(right_col_layout, element_justification='right', expand_x=True, vertical_alignment='t')]
-]
+if __name__== "__main__" :
+        main()
 
-window = sg.Window('Dataset Manipulation Tool', layout,resizable=True, finalize=True,size=(1100, 360), location=(500, 400))
-window['folder_multiplier'].bind("<Return>", "_Enter")  
-
-input_folder = None
-output_folder = None
-
-
-#--------------------------------------------------Event Handling--------------------------
-Clear_Menu()
-     
-while True:
-    event, values = window.read()
-    if event in (sg.WIN_CLOSED, 'Exit'):
-        break
-    if event == '-INFOLDER-':
-        im_in_train = 0
-        im_in_val = 0
-        input_folder = values['-INFOLDER-'] 
-        Images_In_Dir = len(os.listdir(input_folder))
-    if event == '-OUTFOLDER-':
-        output_folder = values['-OUTFOLDER-'] 
-    if event == 'fp_extraction':
-        if(values['fp_extraction'] == 0):
-            Clear_Menu()
-            continue
-        window['reduce_set'].update(False)
-        window['increase_set'].update(False)
-        window['create_set'].update(False)
-        if(Check_Folders_Selected() == False):
-            continue
-        FP_Extraction_Menu()
-    if event == 'reduce_set':
-        if(values['reduce_set'] == 0):
-            Clear_Menu()
-            continue
-        window['fp_extraction'].update(False)
-        window['increase_set'].update(False)
-        window['create_set'].update(False)
-        if(Check_Folders_Selected() == False):
-            continue
-        Reduce_Set_Menu()
-    if event == 'increase_set':
-        if(values['increase_set'] == 0):
-            Clear_Menu()
-            continue
-        window['reduce_set'].update(False)
-        window['fp_extraction'].update(False)
-        window['create_set'].update(False)
-        if(Check_Folders_Selected() == False):
-            continue
-        Increase_Set_Menu()
-
-    if event == 'create_set':
-        if(values['create_set'] == 0):
-            Clear_Menu()
-            continue
-        window['reduce_set'].update(False)
-        window['fp_extraction'].update(False)
-        window['increase_set'].update(False)
-        if(Check_Folders_Selected() == False):
-            continue
-        Create_Set_Menu()
-
-    if event == 'random_reduce':
-        window['smallest_reduce'].update(False)
-        window['largest_reduce'].update(False)
-
-    if event == 'smallest_reduce':
-        window['random_reduce'].update(False)
-        window['largest_reduce'].update(False)
-
-    if event == 'largest_reduce':
-        window['smallest_reduce'].update(False)
-        window['random_reduce'].update(False)
-
-    if event == 'execute':
-        if(Check_Folders_Selected() == True):
-            if(Check_Box_Selected() == True):
-                if(values['increase_set'] == 1):
-                    Increase_Set()
-                elif(values['fp_extraction'] == 1):
-                    FP_Extraction(input_folder, output_folder)
-                elif(values['reduce_set'] == 1):
-                    if(values['random_reduce'] + values['smallest_reduce'] + values['largest_reduce']== 0):
-                        sg.Popup('Please Select Reduce Option', keep_on_top=True, location=(960, 540))
-                        continue
-                    else:
-                        Reduce_Set()
-                elif(values['create_set'] == 1):
-                    Create_Set()
-         
-    if event == 'folder_multiplier' + '_Enter':
-        dataset_multiplier = float(values['folder_multiplier'])
-        if(im_in_train == 0):
-            window['im_in_out_dir'].update('Projected Images in Output Train Folder: ' + str(int(dataset_multiplier*Images_In_Dir)))
-        else:
-            trainVal = float(im_in_train)*float(dataset_multiplier)
-            valVal = float(im_in_val)*float(dataset_multiplier)
-            window['im_in_out_dir'].update('Projected Images in Output Train Folder: ' + str(int(trainVal)) + ', Val Folder: '+ str(int(valVal)))
-
-
-    if event == 'submit_button':
-        newDirectory = output_folder + "/" + values['new_folder_text']
-        os.mkdir(newDirectory)
-        output_folder = newDirectory
-
-    if event == 'slider':
-        Create_Set_Menu()
-        
