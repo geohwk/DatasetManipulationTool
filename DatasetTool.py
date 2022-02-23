@@ -16,6 +16,8 @@ Images_In_Dir = 0
 train_input_dir = None
 val_input_dir = None
 
+class_directories = []
+
 Execute = False
 
 datasetFormat = False
@@ -65,7 +67,7 @@ def Main_Menu_State():
         window['increase_set'].update(False)
         Create_Set_Menu()
     else:
-        print("No Selection...")
+        pass
 
 def Side_Menu_State():
     global SideMenuState
@@ -129,6 +131,7 @@ def Event_Handler():
         output_folder = values['-OUTFOLDER-'] 
         return True
     if event == 'fp_extraction':
+        Images_In_Dir = len(os.listdir(input_folder))
         dataset_multiplier = 1
         
         if(values['fp_extraction'] == 0):
@@ -141,6 +144,7 @@ def Event_Handler():
             MainMenuState = MainMenu.extraction
             return True
     if event == 'reduce_set':
+        Images_In_Dir = len(os.listdir(input_folder))
         dataset_multiplier = 1
         
         if(values['reduce_set'] == 0):
@@ -152,6 +156,7 @@ def Event_Handler():
             MainMenuState = MainMenu.reduce
             return True
     if event == 'increase_set':
+        Images_In_Dir = len(os.listdir(input_folder))
         dataset_multiplier = 1
         if(values['increase_set'] == 0):
             Clear_Menu()
@@ -163,6 +168,12 @@ def Event_Handler():
             return True
     if event == 'create_set':
         dataset_multiplier = 1
+        count = 0
+        for path in os.listdir(input_folder):
+            for file in os.listdir(input_folder + "/" + path):
+                count += 1
+        Images_In_Dir = count
+
         if(values['create_set'] == 0):
             Clear_Menu()
             MainMenuState = MainMenu.nothing
@@ -202,8 +213,6 @@ def Event_Handler():
 def Processes():
     global Execute
     if Execute == True:
-        print("Execute = True")
-        print("Running Selection")
         global MainMenuState
         if MainMenuState == MainMenu.extraction:
             FP_Extraction(input_folder, output_folder)
@@ -215,7 +224,7 @@ def Processes():
         elif MainMenuState == MainMenu.create:
             Create_Set()
         else:
-            print("No Selection...")
+            pass
         Execute = False
     else:
         pass
@@ -236,7 +245,7 @@ def Layout_Setup():
         [sg.Text('Create New Folder in Output Folder:'),sg.InputText(size=(15,1), key="new_folder_text"),sg.Button('Submit',key="submit_button", enable_events=True)],
         [sg.Text('Images in Folder', visible=True, key="im_in_dir")], 
         [sg.Text('Images in Folder', visible=True, key="im_in_out_dir")],
-        [sg.Slider(range=(0,1),default_value=0.5,size=(30,10),orientation='horizontal',visible=True, key='slider', font=("Courier New", 10), enable_events=True, resolution=.1)],
+        [sg.Slider(range=(0,1),default_value=0.5,size=(30,10),orientation='horizontal',visible=True, key='slider', font=("Courier New", 10), enable_events=True, resolution=.05)],
         [sg.Text('Dataset Multiplier:', key='folder_multiplier_text', visible=True)], 
         [sg.Input(str(dataset_multiplier), size=(10,1), key='folder_multiplier', visible=True)],
         [sg.Checkbox(' - Random', default=False, enable_events=True, visible=True, pad=(86, 0), key="random_reduce")],
@@ -389,14 +398,15 @@ def Create_Dataset_Folder():
             os.mkdir(output_folder + folder)
         except:
             print("Folder Already Exists...")
-        try:
-            os.mkdir(output_folder + folder + "/Battery")
-        except:
-            print("Folder Already Exists...")
-        try:
-            os.mkdir(output_folder + folder + "/FP")
-        except:
-            print("Folder Already Exists...")
+        if(MainMenuState != MainMenu.create):
+            try:
+                os.mkdir(output_folder + folder + "/Battery")
+            except:
+                print("Folder Already Exists...")
+            try:
+                os.mkdir(output_folder + folder + "/FP")
+            except:
+                print("Folder Already Exists...")
         folder = "/val"
 
 def Generate_Rotations(file, folder):
@@ -495,8 +505,40 @@ def Increase_Set():
     window['progress_bar'].update(0)
     #window['progress_bar'].update(visible=False)
     
+def Get_Class_Folders():
+    global input_folder, class_directories
+    class_directories = []
+    for file in os.listdir(input_folder):
+        class_directories.append(file)
+
+def Add_Classes_To_Dataset():
+    global output_folder, class_directories
+    for name in class_directories:
+        os.mkdir(output_folder + "/train/" + name)
+        os.mkdir(output_folder + "/val/" + name)
+    
+def Move_Files_To_Output():
+    global output_folder, input_folder, class_directories, slider_ratio
+    count = 0
+    
+    for classFolder in class_directories:
+        trainVal = "/train/"
+        for i, file in enumerate(os.listdir(input_folder + "/" + classFolder)):
+            count = count + 1
+            if(i/len(os.listdir(input_folder + "/" + classFolder)) >= slider_ratio):
+                trainVal = "/val/"
+            shutil.copy(input_folder + "/" + classFolder + "/" +  file, output_folder + trainVal + classFolder)
+            window['progress_bar'].update(1000*(count/Images_In_Dir))
+
+    window['progress_bar'].update(0)
+        
+
+
 def Create_Set():
-    pass
+    Create_Dataset_Folder()
+    Get_Class_Folders()
+    Add_Classes_To_Dataset()
+    Move_Files_To_Output()
 
 #-----------------------Main-------------------------------
 
