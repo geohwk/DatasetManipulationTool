@@ -66,6 +66,11 @@ def Main_Menu_State():
         window['fp_extraction'].update(False)
         window['increase_set'].update(False)
         Create_Set_Menu()
+    elif MainMenuState == MainMenu.nothing:
+        window['create_set'].update(False)
+        window['reduce_set'].update(False)
+        window['fp_extraction'].update(False)
+        window['increase_set'].update(False)
     else:
         pass
 
@@ -169,10 +174,16 @@ def Event_Handler():
     if event == 'create_set':
         dataset_multiplier = 1
         count = 0
-        for path in os.listdir(input_folder):
-            for file in os.listdir(input_folder + "/" + path):
-                count += 1
-        Images_In_Dir = count
+        try:
+            for path in os.listdir(input_folder):
+                for file in os.listdir(input_folder + "/" + path):
+                    count += 1
+            Images_In_Dir = count
+        except:
+            sg.Popup('Input Folder in incorrect format for dataset creation', keep_on_top=True, location=(960, 540))
+            Clear_Menu()
+            MainMenuState = MainMenu.nothing
+            return True
 
         if(values['create_set'] == 0):
             Clear_Menu()
@@ -260,7 +271,7 @@ def Layout_Setup():
         sg.Column(right_col_layout, element_justification='right', expand_x=True, vertical_alignment='t')]
     ]
 
-    window = sg.Window('Dataset Manipulation Tool', layout,resizable=True, finalize=True,size=(1100, 360), location=(500, 400))
+    window = sg.Window('Dataset Manipulation Tool', layout,resizable=True, finalize=True, location=(500, 400))
     window['folder_multiplier'].bind("<Return>", "_Enter")  
 
 
@@ -320,7 +331,6 @@ def Get_Dataset_Folders():
 def Reduce_Set_Menu():
     Clear_Menu()
     Directory_Stats_Selection()
-
     window['folder_multiplier_text'].update("Dataset Multiplier (< 1):")
     window['folder_multiplier_text'].update(visible=True)
     window['folder_multiplier'].update(dataset_multiplier)
@@ -332,7 +342,6 @@ def Reduce_Set_Menu():
 def Increase_Set_Menu():
     Clear_Menu()
     Directory_Stats_Selection()
-
     window['folder_multiplier_text'].update("Dataset Multiplier (x2, x3, x4):")
     window['folder_multiplier_text'].update(visible=True)
     window['folder_multiplier'].update(round(dataset_multiplier,0))
@@ -374,22 +383,33 @@ def FP_Extraction(input_folder, output_folder):
     count = 0
     for file in os.listdir(input_folder):
         image = cv2.imread(input_folder +"/"+ str(file))
+        
         betweenDots = str(file).split('.')
         betweenUnderscores = str(betweenDots[1]).split('_')
-        x1 = betweenUnderscores[1]
-        y1 = betweenUnderscores[2]
-        x2 = betweenUnderscores[3]
-        y2 = betweenUnderscores[4]
-        cropImage(x1, y1, x2, y2, image, output_folder, file)
+        x1 = int(betweenUnderscores[1])
+        y1 = int(betweenUnderscores[2])
+        x2 = int(betweenUnderscores[3])
+        y2 = int(betweenUnderscores[4])
+
+        height = y2 - y1
+        width = x2 - x1
+
+        if(height > width):
+            x2 = int(float((x1 + x2)/2) + float(height/2))
+            x1 = x2 - height
+            if(x1 < 0):x1 = 0
+        
+        elif(width > height):
+            y2 = int(float((y1 + y2)/2) + float(width/2))
+            y1 = y2 - width
+            if(y1 < 0):y1 = 0
+
+        roi = image[int(y1):int(y2), int(x1):int(x2)]
+        cv2.imwrite(output_folder +"/"+ str(file), cv2.resize(roi, (299, 299)))#, cv2.resize(roi, (299, 299)
         count = count + 1
         window['progress_bar'].update(1000*(count/len(os.listdir(input_folder))))
     window['progress_bar'].update(0)
     #window['progress_bar'].update(visible=False)
-
-def cropImage(x1, y1, x2, y2, image, output_folder, file):
-
-    roi = image[int(y1):int(y2), int(x1):int(x2)]
-    cv2.imwrite(output_folder +"/"+ str(file), cv2.resize(roi, (299, 299)))
 
 def Create_Dataset_Folder():
     folder = "/train"
